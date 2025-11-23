@@ -6,6 +6,7 @@ document.addEventListener("DOMContentLoaded", function () {
     document.getElementById("saveSettings").addEventListener("click", saveSettings);
     document.getElementById("scanNow").addEventListener("click", scanNow);
     document.getElementById("testWebhook").addEventListener("click", testWebhook);
+    document.getElementById("openGroups").addEventListener("click", openGroups);
 
     // Load settings when popup opens
     loadSettings();
@@ -13,7 +14,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
 function loadSettings() {
     chrome.storage.local.get(
-        ["keywords", "webhookUrl", "scanInterval", "autoScroll", "maxScrollAttempts", "facebookGroups"],
+        ["keywords", "webhookUrl", "scanInterval", "autoScroll", "maxScrollAttempts", "facebookGroups", "autoOpenGroups"],
         function (result) {
             document.getElementById("keywords").value = result.keywords ? result.keywords.join(", ") : "";
             document.getElementById("webhookUrl").value = result.webhookUrl || "";
@@ -21,6 +22,7 @@ function loadSettings() {
             document.getElementById("autoScroll").checked = result.autoScroll || false;
             document.getElementById("maxScrollAttempts").value = result.maxScrollAttempts || 3;
             document.getElementById("facebookGroups").value = result.facebookGroups ? result.facebookGroups.join("\n") : "";
+            document.getElementById("autoOpenGroups").checked = result.autoOpenGroups !== false; // Default to true
             
             updateUI();
         }
@@ -60,6 +62,7 @@ function saveSettings() {
         .split(/[\n,]/)
         .map(url => url.trim())
         .filter(url => url.length > 0 && url.includes('facebook.com/groups/'));
+    const autoOpenGroups = document.getElementById("autoOpenGroups").checked;
 
     if (keywords.length === 0) {
         showStatus("Please enter at least one keyword", "error");
@@ -86,7 +89,8 @@ function saveSettings() {
             scanInterval: scanInterval,
             autoScroll: autoScroll,
             maxScrollAttempts: maxScrollAttempts,
-            facebookGroups: facebookGroups
+            facebookGroups: facebookGroups,
+            autoOpenGroups: autoOpenGroups
         },
         function () {
             showStatus("Settings saved successfully!", "success");
@@ -217,6 +221,28 @@ function testWebhook() {
     });
 }
 
+function openGroups() {
+    const facebookGroups = document.getElementById("facebookGroups").value
+        .split(/[\n,]/)
+        .map(url => url.trim())
+        .filter(url => url.length > 0 && url.includes('facebook.com/groups/'));
+    
+    if (facebookGroups.length === 0) {
+        showStatus("Please add Facebook group URLs first", "error");
+        return;
+    }
+
+    showStatus("Opening Facebook groups...", "info");
+
+    chrome.runtime.sendMessage({ action: "autoOpenGroups" }, (response) => {
+        if (response && response.success) {
+            showStatus("✅ Facebook groups are being opened in background tabs!", "success");
+        } else {
+            showStatus("Failed to open groups", "error");
+        }
+    });
+}
+
 function getKeywords() {
     const keywordsText = document.getElementById("keywords").value;
     return keywordsText.split(",").map((k) => k.trim()).filter((k) => k.length > 0);
@@ -256,27 +282,35 @@ function showStatus(message, type) {
 function updateUI() {
     const keywords = getKeywords();
     const webhookUrl = document.getElementById("webhookUrl").value;
+    const facebookGroups = document.getElementById("facebookGroups").value
+        .split(/[\n,]/)
+        .map(url => url.trim())
+        .filter(url => url.length > 0 && url.includes('facebook.com/groups/'));
+    
     const scanNowButton = document.getElementById("scanNow");
     const testWebhookButton = document.getElementById("testWebhook");
+    const openGroupsButton = document.getElementById("openGroups");
     
     // Enable/disable buttons based on configuration
     const hasKeywords = keywords.length > 0;
     const hasWebhook = webhookUrl.length > 0;
+    const hasGroups = facebookGroups.length > 0;
     
     scanNowButton.disabled = !hasKeywords || !hasWebhook;
     testWebhookButton.disabled = !hasWebhook;
+    openGroupsButton.disabled = !hasGroups;
     
     // Update button titles with helpful hints
     if (!hasKeywords) {
         scanNowButton.title = "Please configure keywords first";
-        testWebhookButton.title = "Please configure webhook URL first";
     } else if (!hasWebhook) {
         scanNowButton.title = "Please configure webhook URL first";
-        testWebhookButton.title = "Please configure webhook URL first";
     } else {
         scanNowButton.title = "Scan current Facebook group page";
-        testWebhookButton.title = "Test connection to Google Sheets";
     }
+    
+    testWebhookButton.title = hasWebhook ? "Test connection to Google Sheets" : "Please configure webhook URL first";
+    openGroupsButton.title = hasGroups ? "Open all configured Facebook groups" : "Please add Facebook group URLs first";
     
     // Update placeholders with examples
     const keywordsInput = document.getElementById("keywords");
@@ -298,6 +332,7 @@ document.getElementById("facebookGroups").addEventListener("input", updateUI);
 document.getElementById("autoScroll").addEventListener("change", updateUI);
 document.getElementById("maxScrollAttempts").addEventListener("input", updateUI);
 document.getElementById("scanInterval").addEventListener("input", updateUI);
+document.getElementById("autoOpenGroups").addEventListener("change", updateUI);
 
 // Add keyboard shortcuts
 document.addEventListener("keydown", function (event) {
@@ -311,6 +346,12 @@ document.addEventListener("keydown", function (event) {
     if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === "S") {
         event.preventDefault();
         scanNow();
+    }
+    
+    // Ctrl+Shift+O to open groups
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === "O") {
+        event.preventDefault();
+        openGroups();
     }
 });
 
