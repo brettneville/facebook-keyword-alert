@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      width: 500px;
+      padding: 20px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    .section {
+      margin-bottom: 24px;
+      padding: 16px;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+    }
+    h3 {
+      margin-top: 0;
+      color: #1877f2;
+    }
+    textarea, input[type="text"] {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 14px;
+    }
+    textarea {
+      height: 100px;
+      resize: vertical;
+    }
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+    .help-text {
+      font-size: 12px;
+      color: #666;
+      margin-top: 4px;
+    }
+    .btn {
+      padding: 10px 20px;
+      background: #1877f2;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-right: 8px;
+      margin-bottom: 8px;
+    }
+    .btn:hover {
+      background: #166fe5;
+    }
+    .btn-secondary {
+      background: #6c757d;
+    }
+    .btn-secondary:hover {
+      background: #5a6268;
+    }
+    .btn-success {
+      background: #28a745;
+    }
+    .btn-success:hover {
+      background: #218838;
+    }
+    .status {
+      padding: 8px 12px;
+      border-radius: 4px;
+      margin-top: 12px;
+      display: none;
+    }
+    .status.success {
+      background: #d4edda;
+      color: #155724;
+      display: block;
+    }
+    .status.error {
+      background: #f8d7da;
+      color: #721c24;
+      display: block;
+    }
+    .tab-management {
+      margin-top: 16px;
+    }
+    .tab-count {
+      font-size: 12px;
+      color: #666;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <h2>⚙️ Facebook Keyword Alert Settings</h2>
+
+  <div class="section">
+    <h3>🔍 Keywords to Monitor</h3>
+    <label for="keywords">Enter keywords (one per line):</label>
+    <textarea id="keywords" placeholder="wilmington
+leland
+oak island
+wrightsville"></textarea>
+    <div class="help-text">The extension will alert you when posts contain any of these words</div>
+  </div>
+
+  <div class="section">
+    <h3>👥 Facebook Groups to Monitor</h3>
+    <label for="groups">Enter Facebook Group URLs or IDs (one per line):</label>
+    <textarea id="groups" placeholder="https://facebook.com/groups/163141110370804
+124629646386
+1667043346875695"></textarea>
+    <div class="help-text">
+      Enter full URLs or just group IDs. Examples:<br>
+      - https://facebook.com/groups/123456789<br>
+      - 123456789<br>
+      - my-group-name
+    </div>
+    
+    <div class="tab-management">
+      <button id="openGroups" class="btn btn-success">🚀 Open All Groups</button>
+      <button id="closeGroups" class="btn btn-secondary">🗑️ Close Group Tabs</button>
+      <button id="refreshGroups" class="btn">🔄 Refresh Groups</button>
+      <div id="tabCount" class="tab-count">No group tabs open</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>📊 Google Sheets Integration</h3>
+    <label for="googleSheetsUrl">Google Apps Script Webhook URL:</label>
+    <input type="text" id="googleSheetsUrl" placeholder="https://script.google.com/macros/s/.../exec">
+    <div class="help-text">Get this from your Google Apps Script deployment</div>
+  </div>
+
+  <div class="section">
+    <h3>🔔 Notifications</h3>
+    <label>
+      <input type="checkbox" id="notificationsEnabled" checked>
+      Show desktop notifications when keywords are found
+    </label>
+  </div>
+
+  <button id="save" class="btn">💾 Save Settings</button>
+  <div id="status" class="status"></div>
+
+  <script src="options.js"></script>
+</body>
+</html>
