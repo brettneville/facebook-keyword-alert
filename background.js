@@ -1,4 +1,4 @@
-// background.js - COMPLETE VERSION WITH AUTO-SCAN AND GROUPS FILTERING
+// background.js - COMPLETE VERSION WITH AUTO-SCAN, GROUPS FILTERING, AND AUTO-OPEN
 console.log("Facebook Keyword Alert background script loaded");
 
 let scanIntervals = new Map();
@@ -209,8 +209,78 @@ async function shouldScanTab(tab) {
  */
 function getStoredSettings() {
     return new Promise((resolve) => {
-        chrome.storage.local.get(['keywords', 'webhookUrl', 'scanInterval', 'autoScroll', 'maxScrollAttempts', 'facebookGroups'], (result) => {
+        chrome.storage.local.get(['keywords', 'webhookUrl', 'scanInterval', 'autoScroll', 'maxScrollAttempts', 'facebookGroups', 'autoOpenGroups'], (result) => {
             resolve(result);
+        });
+    });
+}
+
+// ==================== AUTO-OPEN FUNCTIONALITY ====================
+
+/**
+ * Enhanced auto-open that manages existing tabs and only opens missing groups
+ */
+async function enhancedAutoOpenFacebookGroups() {
+    try {
+        const settings = await getStoredSettings();
+        const facebookGroups = settings.facebookGroups || [];
+        
+        if (facebookGroups.length === 0) {
+            console.log('⏸️ No specific Facebook groups configured for auto-opening');
+            return;
+        }
+        
+        // Get all existing Facebook group tabs
+        const existingTabs = await new Promise(resolve => {
+            chrome.tabs.query({url: "*://*.facebook.com/groups/*"}, resolve);
+        });
+        
+        const existingUrls = existingTabs.map(tab => tab.url);
+        const groupsToOpen = [];
+        
+        // Find groups that aren't already open
+        facebookGroups.forEach(groupUrl => {
+            const isAlreadyOpen = existingUrls.some(url => url.includes(groupUrl));
+            if (!isAlreadyOpen) {
+                groupsToOpen.push(groupUrl);
+            } else {
+                console.log(`⏸️ Group already open: ${groupUrl}`);
+            }
+        });
+        
+        if (groupsToOpen.length === 0) {
+            console.log('✅ All configured Facebook groups are already open');
+            return;
+        }
+        
+        console.log(`🔄 Auto-opening ${groupsToOpen.length} new Facebook groups`);
+        
+        // Open missing groups
+        groupsToOpen.forEach((groupUrl, index) => {
+            setTimeout(() => {
+                chrome.tabs.create({ 
+                    url: groupUrl,
+                    active: false // Open in background
+                }, (tab) => {
+                    console.log(`✅ Opened Facebook group: ${groupUrl}`);
+                    // Start auto-scan for this new tab
+                    startAutoScanForTab(tab.id);
+                });
+            }, index * 1000);
+        });
+        
+    } catch (error) {
+        console.error('Error auto-opening Facebook groups:', error);
+    }
+}
+
+/**
+ * Check if we should auto-open groups (on browser start)
+ */
+function shouldAutoOpenGroups() {
+    return new Promise((resolve) => {
+        chrome.storage.local.get(['autoOpenGroups'], (result) => {
+            resolve(result.autoOpenGroups !== false); // Default to true if not set
         });
     });
 }
@@ -225,6 +295,13 @@ function initializeAutoScan() {
     scanIntervals.forEach((interval, tabId) => {
         clearInterval(interval);
         scanIntervals.delete(tabId);
+    });
+    
+    // Auto-open Facebook groups on startup
+    shouldAutoOpenGroups().then(shouldOpen => {
+        if (shouldOpen) {
+            enhancedAutoOpenFacebookGroups();
+        }
     });
 }
 
@@ -277,6 +354,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     
     if (request.action === 'restartAutoScan' && request.tabId) {
         startAutoScanForTab(request.tabId).then(() => {
+            sendResponse({ success: true });
+        });
+        return true;
+    }
+    
+    // Auto-open groups action
+    if (request.action === 'autoOpenGroups') {
+        enhancedAutoOpenFacebookGroups().then(() => {
             sendResponse({ success: true });
         });
         return true;
