@@ -1,4 +1,4 @@
-// background.js
+// background.js - COMPLETE VERSION WITH AUTO-SCAN AND GROUPS FILTERING
 console.log("Facebook Keyword Alert background script loaded");
 
 let scanIntervals = new Map();
@@ -187,11 +187,29 @@ function isFacebookGroupTab(tab) {
 }
 
 /**
+ * Check if tab should be scanned based on configured groups
+ */
+async function shouldScanTab(tab) {
+    const settings = await getStoredSettings();
+    const facebookGroups = settings.facebookGroups || [];
+    
+    // If no groups specified, scan all Facebook groups
+    if (facebookGroups.length === 0) {
+        return true;
+    }
+    
+    // Check if current tab URL matches any configured group
+    return facebookGroups.some(groupUrl => {
+        return tab.url.includes(groupUrl);
+    });
+}
+
+/**
  * Get stored settings
  */
 function getStoredSettings() {
     return new Promise((resolve) => {
-        chrome.storage.local.get(['keywords', 'webhookUrl', 'scanInterval', 'autoScroll', 'maxScrollAttempts'], (result) => {
+        chrome.storage.local.get(['keywords', 'webhookUrl', 'scanInterval', 'autoScroll', 'maxScrollAttempts', 'facebookGroups'], (result) => {
             resolve(result);
         });
     });
@@ -213,8 +231,14 @@ function initializeAutoScan() {
 // Listen for tab updates to manage auto-scan
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     if (changeInfo.status === 'complete' && isFacebookGroupTab(tab)) {
-        console.log(`✅ Facebook group tab loaded: ${tab.url}`);
-        startAutoScanForTab(tabId);
+        shouldScanTab(tab).then(shouldScan => {
+            if (shouldScan) {
+                console.log(`✅ Facebook group tab loaded and approved for scanning: ${tab.url}`);
+                startAutoScanForTab(tabId);
+            } else {
+                console.log(`⏸️ Facebook group tab loaded but not in monitored list: ${tab.url}`);
+            }
+        });
     }
 });
 
