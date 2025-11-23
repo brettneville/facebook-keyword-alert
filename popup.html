@@ -115,6 +115,15 @@
             background: #e4e6eb;
         }
         
+        #openGroups {
+            background: #8a2be2;
+            color: white;
+        }
+        
+        #openGroups:hover {
+            background: #7b1fa2;
+        }
+        
         .status {
             margin-top: 15px;
             padding: 10px;
@@ -181,6 +190,14 @@
         </div>
         
         <div class="setting-group">
+            <div class="checkbox-group">
+                <input type="checkbox" id="autoOpenGroups">
+                <label for="autoOpenGroups">Auto-open groups on browser start</label>
+            </div>
+            <div class="description">Automatically open all configured Facebook groups when browser starts</div>
+        </div>
+        
+        <div class="setting-group">
             <label for="webhookUrl">Google Apps Script Webhook URL:</label>
             <input type="text" id="webhookUrl" placeholder="https://script.google.com/macros/s/.../exec">
             <div class="description">Paste your Google Apps Script webhook URL here</div>
@@ -213,6 +230,7 @@
         
         <div class="button-group">
             <button id="testWebhook">🧪 Test Webhook</button>
+            <button id="openGroups">🚀 Open Groups</button>
         </div>
         
         <div id="status" class="status"></div>
