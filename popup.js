@@ -13,13 +13,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
 function loadSettings() {
     chrome.storage.local.get(
-        ["keywords", "webhookUrl", "scanInterval", "autoScroll", "maxScrollAttempts"],
+        ["keywords", "webhookUrl", "scanInterval", "autoScroll", "maxScrollAttempts", "facebookGroups"],
         function (result) {
             document.getElementById("keywords").value = result.keywords ? result.keywords.join(", ") : "";
             document.getElementById("webhookUrl").value = result.webhookUrl || "";
             document.getElementById("scanInterval").value = result.scanInterval || 5;
             document.getElementById("autoScroll").checked = result.autoScroll || false;
             document.getElementById("maxScrollAttempts").value = result.maxScrollAttempts || 3;
+            document.getElementById("facebookGroups").value = result.facebookGroups ? result.facebookGroups.join("\n") : "";
             
             updateUI();
         }
@@ -55,6 +56,10 @@ function saveSettings() {
     const scanInterval = parseInt(document.getElementById("scanInterval").value) || 0;
     const autoScroll = document.getElementById("autoScroll").checked;
     const maxScrollAttempts = parseInt(document.getElementById("maxScrollAttempts").value) || 3;
+    const facebookGroups = document.getElementById("facebookGroups").value
+        .split(/[\n,]/)
+        .map(url => url.trim())
+        .filter(url => url.length > 0 && url.includes('facebook.com/groups/'));
 
     if (keywords.length === 0) {
         showStatus("Please enter at least one keyword", "error");
@@ -80,7 +85,8 @@ function saveSettings() {
             webhookUrl: webhookUrl,
             scanInterval: scanInterval,
             autoScroll: autoScroll,
-            maxScrollAttempts: maxScrollAttempts
+            maxScrollAttempts: maxScrollAttempts,
+            facebookGroups: facebookGroups
         },
         function () {
             showStatus("Settings saved successfully!", "success");
@@ -275,10 +281,12 @@ function updateUI() {
     // Update placeholders with examples
     const keywordsInput = document.getElementById("keywords");
     const webhookInput = document.getElementById("webhookUrl");
+    const groupsInput = document.getElementById("facebookGroups");
     
     if (!keywordsInput.getAttribute('data-placeholder-set')) {
         keywordsInput.placeholder = "real estate, mortgage, housing market, for sale...";
         webhookInput.placeholder = "https://script.google.com/macros/s/.../exec";
+        groupsInput.placeholder = "https://facebook.com/groups/group1, https://facebook.com/groups/group2...";
         keywordsInput.setAttribute('data-placeholder-set', 'true');
     }
 }
@@ -286,6 +294,7 @@ function updateUI() {
 // Add real-time validation
 document.getElementById("keywords").addEventListener("input", updateUI);
 document.getElementById("webhookUrl").addEventListener("input", updateUI);
+document.getElementById("facebookGroups").addEventListener("input", updateUI);
 document.getElementById("autoScroll").addEventListener("change", updateUI);
 document.getElementById("maxScrollAttempts").addEventListener("input", updateUI);
 document.getElementById("scanInterval").addEventListener("input", updateUI);
