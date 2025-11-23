@@ -1,366 +1,311 @@
-// Background service worker - COMPLETE WITH GROUP MANAGEMENT
-console.log('🔧 Facebook Keyword Alert background script loaded');
+// background.js
+console.log("Facebook Keyword Alert background script loaded");
 
-// Initialize storage with default settings if not exists
-chrome.runtime.onInstalled.addListener(async () => {
-  console.log('Extension installed/updated');
-  
-  const result = await chrome.storage.local.get(['keywords', 'notificationsEnabled']);
-  
-  if (!result.keywords) {
-    await chrome.storage.local.set({
-      keywords: ['wilmington', 'leland', 'oak island', 'wrightsville', 'bolivia', 'supply', 'shallotte', 'hampstead', 'carolina beach', 'kure beach'],
-      groups: [],
-      notificationsEnabled: true,
-      seenPosts: []
+let scanIntervals = new Map();
+let isScanning = false;
+
+// Your existing sendToSheets function
+async function sendToSheets(matches, source = "extension") {
+    return new Promise((resolve, reject) => {
+        chrome.storage.local.get(["webhookUrl"], async (result) => {
+            const webhookUrl = result.webhookUrl;
+            if (!webhookUrl) {
+                console.error("No webhook URL set");
+                reject("No webhook URL set");
+                return;
+            }
+
+            console.log(`Sending ${matches.length} matches to webhook`);
+
+            try {
+                const response = await fetch(webhookUrl, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        matches: matches,
+                        source: source,
+                        timestamp: new Date().toISOString(),
+                    }),
+                });
+
+                if (response.ok) {
+                    console.log("Successfully sent matches to webhook");
+                    resolve();
+                } else {
+                    console.error("Failed to send matches to webhook", response.status);
+                    reject(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                console.error("Error sending to webhook", error);
+                reject(error);
+            }
+        });
     });
-    console.log('✅ Default settings initialized');
-  }
-});
+}
 
-// Set up periodic checking using alarms
-chrome.alarms.create('periodicCheck', { periodInMinutes: 5 });
-chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === 'periodicCheck') {
-    triggerKeywordCheck();
-  }
-});
+// Your existing handleScanRequest function
+function handleScanRequest(request, sender, sendResponse) {
+    console.log("Handling scan request", request);
 
-// Auto-open groups when Chrome starts (if groups are configured)
-chrome.runtime.onStartup.addListener(async () => {
-  console.log('Chrome started - checking for groups to auto-open');
-  const settings = await getSettings();
-  
-  if (settings.groups && settings.groups.length > 0) {
-    console.log(`Auto-opening ${settings.groups.length} groups on startup`);
-    openGroupTabs(settings.groups);
-  }
-});
+    if (!sender.tab) {
+        console.error("No tab associated with request");
+        sendResponse({ error: "No tab associated with request" });
+        return;
+    }
 
-// Listen for messages from content scripts and popup
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  console.log('Background received message:', request.action);
-  
-  switch (request.action) {
-    case 'keywordMatchFound':
-      handleKeywordMatch(request.data, sender.tab);
-      sendResponse({ success: true });
-      break;
-      
-    case 'getSettings':
-      getSettings().then(settings => sendResponse(settings));
-      return true; // Keep message channel open for async
-      
-    case 'saveSettings':
-      saveSettings(request.settings).then(() => sendResponse({ success: true }));
-      return true; // Keep message channel open for async
-      
-    case 'isPostSeen':
-      isPostSeen(request.postId).then(isSeen => sendResponse(isSeen));
-      return true; // Keep message channel open for async
-      
-    // GROUP MANAGEMENT ACTIONS:
-    case 'openGroupTabs':
-      openGroupTabs(request.groups).then(tabs => sendResponse({ success: true, opened: tabs.length }));
-      return true;
-      
-    case 'closeGroupTabs':
-      closeGroupTabs().then(result => sendResponse(result));
-      return true;
-      
-    case 'refreshGroupTabs':
-      refreshGroupTabs().then(result => sendResponse(result));
-      return true;
-      
-    case 'getGroupTabCount':
-      getGroupTabCount().then(result => sendResponse(result));
-      return true;
-      
-    default:
-      sendResponse({ error: 'Unknown action' });
-  }
-});
+    chrome.tabs.sendMessage(
+        sender.tab.id,
+        { action: "scan", keywords: request.keywords },
+        (response) => {
+            console.log("Received response from content script", response);
+            if (response && response.matches && response.matches.length > 0) {
+                console.log(`Sending ${response.matches.length} matches to sheets`);
+                sendToSheets(response.matches, "manual")
+                    .then(() => {
+                        sendResponse({
+                            success: true,
+                            matches: response.matches,
+                        });
+                    })
+                    .catch((error) => {
+                        sendResponse({
+                            success: false,
+                            error: error,
+                        });
+                    });
+            } else {
+                sendResponse({
+                    success: true,
+                    matches: [],
+                });
+            }
+        }
+    );
+}
 
-// GROUP MANAGEMENT FUNCTIONS
+// ==================== AUTO-SCROLL & AUTO-REFRESH FUNCTIONS ====================
 
-// Open group tabs automatically
-async function openGroupTabs(groups) {
-  console.log('🚀 Opening group tabs:', groups);
-  
-  const openedTabs = [];
-  
-  for (const group of groups) {
+/**
+ * Start auto-scan for a specific tab
+ */
+async function startAutoScanForTab(tabId) {
+    // Stop existing scan for this tab
+    stopAutoScanForTab(tabId);
+    
     try {
-      const groupUrl = normalizeGroupUrl(group);
-      console.log(`Opening tab for: ${groupUrl}`);
-      
-      // Check if this group is already open
-      const existingTabs = await chrome.tabs.query({ url: `*://*.facebook.com/groups/${extractGroupId(group)}/*` });
-      
-      if (existingTabs.length === 0) {
-        const tab = await chrome.tabs.create({
-          url: groupUrl,
-          active: false // Open in background
+        const settings = await getStoredSettings();
+        const scanInterval = settings.scanInterval || 5; // Default 5 minutes
+        
+        if (scanInterval > 0) {
+            console.log(`🔄 Starting auto-scan for tab ${tabId} every ${scanInterval} minutes`);
+            
+            const intervalId = setInterval(async () => {
+                if (!isScanning) {
+                    await performTabScan(tabId);
+                } else {
+                    console.log('⏸️ Scan already in progress, skipping...');
+                }
+            }, scanInterval * 60 * 1000);
+            
+            scanIntervals.set(tabId, intervalId);
+            
+            // Perform initial scan immediately
+            await performTabScan(tabId);
+        }
+    } catch (error) {
+        console.error('Error starting auto-scan:', error);
+    }
+}
+
+/**
+ * Stop auto-scan for a specific tab
+ */
+function stopAutoScanForTab(tabId) {
+    if (scanIntervals.has(tabId)) {
+        clearInterval(scanIntervals.get(tabId));
+        scanIntervals.delete(tabId);
+        console.log(`🛑 Stopped auto-scan for tab ${tabId}`);
+    }
+}
+
+/**
+ * Perform a scan on a specific tab
+ */
+async function performTabScan(tabId) {
+    if (isScanning) {
+        console.log('⏸️ Scan already in progress, skipping...');
+        return;
+    }
+    
+    try {
+        isScanning = true;
+        const settings = await getStoredSettings();
+        
+        console.log(`🔍 Auto-scanning tab ${tabId}`);
+        
+        const response = await chrome.tabs.sendMessage(tabId, {
+            action: 'scan',
+            keywords: settings.keywords || [],
+            autoScroll: settings.autoScroll || false,
+            maxScrollAttempts: settings.maxScrollAttempts || 3
         });
         
-        openedTabs.push(tab);
-        console.log(`✅ Opened tab for group: ${group}`);
+        if (response && response.matches && response.matches.length > 0) {
+            console.log(`✅ Found ${response.matches.length} matches in tab ${tabId}`);
+            
+            // Use your existing sendToSheets function
+            await sendToSheets(response.matches, 'auto_scan');
+            
+            // Show notification for new matches
+            if (response.matches.length > 0) {
+                chrome.notifications.create({
+                    type: 'basic',
+                    iconUrl: 'icons/icon48.png',
+                    title: 'Facebook Keyword Alert',
+                    message: `Found ${response.matches.length} new matches!`
+                });
+            }
+        } else {
+            console.log(`❌ No matches found in tab ${tabId}`);
+        }
         
-        // Wait a bit between opening tabs to be nice to Facebook
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      } else {
-        console.log(`ℹ️ Group already open: ${group}`);
-      }
-      
     } catch (error) {
-      console.error(`Error opening group ${group}:`, error);
+        console.error(`Error scanning tab ${tabId}:`, error);
+        // Tab might not be ready or content script not loaded
+    } finally {
+        isScanning = false;
     }
-  }
-  
-  console.log(`✅ Opened ${openedTabs.length} new group tabs`);
-  return openedTabs;
 }
 
-// Normalize group input to proper Facebook URL
-function normalizeGroupUrl(groupInput) {
-  groupInput = groupInput.trim();
-  
-  // If it's already a full URL, use it as-is
-  if (groupInput.startsWith('https://facebook.com/groups/') || 
-      groupInput.startsWith('https://www.facebook.com/groups/')) {
-    return groupInput;
-  }
-  
-  // If it's just an ID or slug, create the full URL
-  return `https://facebook.com/groups/${groupInput}`;
+/**
+ * Check if tab is a Facebook group
+ */
+function isFacebookGroupTab(tab) {
+    return tab.url && tab.url.includes('facebook.com/groups/');
 }
 
-// Extract group ID from various input formats
-function extractGroupId(groupInput) {
-  groupInput = groupInput.trim();
-  
-  // If it's a full URL, extract the group ID
-  const urlMatch = groupInput.match(/facebook\.com\/groups\/([^\/?]+)/);
-  if (urlMatch) {
-    return urlMatch[1];
-  }
-  
-  // Otherwise, assume it's already the group ID
-  return groupInput;
-}
-
-// Close all Facebook group tabs
-async function closeGroupTabs() {
-  try {
-    const tabs = await chrome.tabs.query({ 
-      url: 'https://*.facebook.com/groups/*' 
+/**
+ * Get stored settings
+ */
+function getStoredSettings() {
+    return new Promise((resolve) => {
+        chrome.storage.local.get(['keywords', 'webhookUrl', 'scanInterval', 'autoScroll', 'maxScrollAttempts'], (result) => {
+            resolve(result);
+        });
     });
-    
-    const tabIds = tabs.map(tab => tab.id);
-    
-    if (tabIds.length > 0) {
-      await chrome.tabs.remove(tabIds);
-      console.log(`🗑️ Closed ${tabIds.length} group tabs`);
-    } else {
-      console.log('No group tabs to close');
+}
+
+// Initialize when extension loads
+chrome.runtime.onStartup.addListener(initializeAutoScan);
+chrome.runtime.onInstalled.addListener(initializeAutoScan);
+
+function initializeAutoScan() {
+    console.log('🚀 Facebook Keyword Alert auto-scan initialized');
+    // Clear any existing intervals
+    scanIntervals.forEach((interval, tabId) => {
+        clearInterval(interval);
+        scanIntervals.delete(tabId);
+    });
+}
+
+// Listen for tab updates to manage auto-scan
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    if (changeInfo.status === 'complete' && isFacebookGroupTab(tab)) {
+        console.log(`✅ Facebook group tab loaded: ${tab.url}`);
+        startAutoScanForTab(tabId);
     }
-    
-    return { success: true, closed: tabIds.length };
-  } catch (error) {
-    console.error('Error closing group tabs:', error);
-    return { success: false, error: error.message };
-  }
-}
+});
 
-// Refresh all group tabs
-async function refreshGroupTabs() {
-  try {
-    const tabs = await chrome.tabs.query({ 
-      url: 'https://*.facebook.com/groups/*' 
-    });
+// Stop scanning when tab is closed
+chrome.tabs.onRemoved.addListener((tabId) => {
+    stopAutoScanForTab(tabId);
+});
+
+// Enhanced message listener with all functionality
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    console.log("Background received message:", request);
     
-    for (const tab of tabs) {
-      try {
-        await chrome.tabs.reload(tab.id);
-        console.log(`🔄 Refreshed tab: ${tab.url}`);
-        
-        // Wait a bit between refreshes to be nice to Facebook
-        await new Promise(resolve => setTimeout(resolve, 500));
-      } catch (error) {
-        console.error(`Error refreshing tab ${tab.id}:`, error);
-      }
+    if (request.action === "scan") {
+        // Your existing scan logic
+        handleScanRequest(request, sender, sendResponse);
+        return true;
     }
     
-    return { success: true, refreshed: tabs.length };
-  } catch (error) {
-    console.error('Error refreshing group tabs:', error);
-    return { success: false, error: error.message };
-  }
-}
-
-// Get count of open group tabs
-async function getGroupTabCount() {
-  try {
-    const tabs = await chrome.tabs.query({ 
-      url: 'https://*.facebook.com/groups/*' 
-    });
-    
-    return { count: tabs.length };
-  } catch (error) {
-    console.error('Error getting tab count:', error);
-    return { count: 0 };
-  }
-}
-
-// CORE FUNCTIONALITY
-
-// Trigger keyword check across all Facebook group tabs
-async function triggerKeywordCheck() {
-  console.log('🔄 Periodic keyword check triggered');
-  
-  try {
-    const tabs = await chrome.tabs.query({ 
-      url: 'https://*.facebook.com/groups/*' 
-    });
-    
-    console.log(`Found ${tabs.length} Facebook group tabs to check`);
-    
-    for (const tab of tabs) {
-      try {
-        await chrome.tabs.sendMessage(tab.id, { action: 'checkForKeywords' });
-      } catch (error) {
-        console.log(`Could not send message to tab ${tab.id}:`, error);
-      }
+    // NEW ACTIONS FOR AUTO-SCANNING:
+    if (request.action === 'manualScan' && sender.tab) {
+        performTabScan(sender.tab.id).then(() => {
+            sendResponse({ success: true });
+        });
+        return true;
     }
-  } catch (error) {
-    console.error('Error in periodic check:', error);
-  }
-}
-
-// Handle keyword matches
-async function handleKeywordMatch(matchData, tab) {
-  console.log('🎯 Keyword match found:', matchData.keyword);
-  
-  // Save to seen posts
-  await saveSeenPost(matchData.postId);
-  
-  // Send to Google Sheets
-  await sendToGoogleSheets([matchData]);
-  
-  // Show notification
-  await showNotification(matchData);
-}
-
-// Get settings from storage
-async function getSettings() {
-  const result = await chrome.storage.local.get([
-    'keywords',
-    'groups',
-    'googleSheetsUrl',
-    'notificationsEnabled'
-  ]);
-  
-  return {
-    keywords: result.keywords || ['wilmington', 'leland', 'oak island'],
-    groups: result.groups || [],
-    googleSheetsUrl: result.googleSheetsUrl || '',
-    notificationsEnabled: result.notificationsEnabled !== false
-  };
-}
-
-// Save settings to storage
-async function saveSettings(settings) {
-  await chrome.storage.local.set(settings);
-  console.log('💾 Settings saved:', settings);
-}
-
-// Save seen post to prevent duplicates
-async function saveSeenPost(postId) {
-  const result = await chrome.storage.local.get(['seenPosts']);
-  const seenPosts = result.seenPosts || [];
-  
-  if (!seenPosts.includes(postId)) {
-    seenPosts.push(postId);
-    // Keep only last 1000 posts to prevent storage bloat
-    if (seenPosts.length > 1000) {
-      seenPosts.splice(0, seenPosts.length - 1000);
+    
+    if (request.action === 'getScanStatus') {
+        const status = {
+            autoScanEnabled: scanIntervals.size > 0,
+            activeTabs: Array.from(scanIntervals.keys()),
+            totalIntervals: scanIntervals.size,
+            isCurrentlyScanning: isScanning
+        };
+        sendResponse(status);
     }
-    await chrome.storage.local.set({ seenPosts });
-  }
-}
-
-// Check if post has been seen
-async function isPostSeen(postId) {
-  const result = await chrome.storage.local.get(['seenPosts']);
-  const seenPosts = result.seenPosts || [];
-  return seenPosts.includes(postId);
-}
-
-// Send matches to Google Sheets
-async function sendToGoogleSheets(matches) {
-  const settings = await getSettings();
-  
-  if (!settings.googleSheetsUrl) {
-    console.log('⚠️ No Google Sheets URL configured');
-    return;
-  }
-
-  try {
-    const response = await fetch(settings.googleSheetsUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        matches: matches,
-        timestamp: new Date().toISOString(),
-        source: 'chrome_extension'
-      })
-    });
     
-    if (response.ok) {
-      console.log('✅ Data sent to Google Sheets');
-    } else {
-      console.error('❌ Failed to send to Google Sheets:', response.status);
+    if (request.action === 'restartAutoScan' && request.tabId) {
+        startAutoScanForTab(request.tabId).then(() => {
+            sendResponse({ success: true });
+        });
+        return true;
     }
-  } catch (error) {
-    console.error('❌ Error sending to Google Sheets:', error);
-  }
-}
-
-// Show desktop notification
-async function showNotification(matchData) {
-  const settings = await getSettings();
-  
-  if (!settings.notificationsEnabled) return;
-
-  try {
-    const notificationId = `keyword-alert-${Date.now()}`;
     
-    await chrome.notifications.create(notificationId, {
-      type: 'basic',
-      iconUrl: 'icons/icon48.png',
-      title: 'Facebook Keyword Alert!',
-      message: `Found "${matchData.keyword}" in ${matchData.group}`,
-      contextMessage: 'Click to view post',
-      priority: 2
-    });
+    // Your existing testWebhook action
+    if (request.action === "testWebhook") {
+        chrome.storage.local.get(["webhookUrl"], (result) => {
+            const webhookUrl = result.webhookUrl;
+            if (!webhookUrl) {
+                sendResponse({ success: false, error: "No webhook URL set" });
+                return;
+            }
 
-    console.log('🔔 Notification shown');
-    
-    // Handle notification click - create a one-time listener
-    const handleNotificationClick = (clickedNotificationId) => {
-      if (clickedNotificationId === notificationId) {
-        chrome.tabs.create({ url: matchData.groupUrl });
-        chrome.notifications.onClicked.removeListener(handleNotificationClick);
-      }
-    };
-    
-    chrome.notifications.onClicked.addListener(handleNotificationClick);
-    
-  } catch (error) {
-    console.error('❌ Error showing notification:', error);
-  }
-}
+            const testData = {
+                matches: [
+                    {
+                        keyword: "test",
+                        group: "test-group",
+                        groupName: "Test Group",
+                        preview: "This is a test message from the Facebook Keyword Alert extension",
+                        timestamp: new Date().toISOString(),
+                        fullText: "This is a test message from the Facebook Keyword Alert extension. If you can see this, your webhook is working correctly!",
+                        postUrl: "https://facebook.com/groups/test-group/posts/123456789",
+                    },
+                ],
+                source: "test",
+                timestamp: new Date().toISOString(),
+            };
 
-console.log('✅ Background script loaded successfully with group management');
+            fetch(webhookUrl, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(testData),
+            })
+                .then((response) => {
+                    if (response.ok) {
+                        sendResponse({ success: true });
+                    } else {
+                        sendResponse({
+                            success: false,
+                            error: `HTTP ${response.status}`,
+                        });
+                    }
+                })
+                .catch((error) => {
+                    sendResponse({ success: false, error: error.message });
+                });
+        });
+        return true;
+    }
+});
+
+console.log("Facebook Keyword Alert background script initialized successfully");
