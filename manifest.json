@@ -1,61 +1,41 @@
 {
   "manifest_version": 3,
   "name": "Facebook Keyword Alert",
-  "version": "1.0",
-  "description": "Get alerts when Facebook posts contain your keywords",
-  
+  "version": "1.2.0",
+  "description": "Scans open Facebook group tabs for keywords, sends alerts, and logs to Google Sheets.",
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "options_page": "options.html",
   "permissions": [
     "storage",
     "notifications",
-    "activeTab",
     "alarms",
     "tabs"
   ],
-  
   "host_permissions": [
     "https://*.facebook.com/*",
-    "https://*.fb.com/*",
-    "https://script.google.com/*"
+    "https://*.fb.com/*"
   ],
-  
   "background": {
-    "service_worker": "background.js",
-    "type": "module"
+    "service_worker": "background.js"
   },
-  
   "content_scripts": [
     {
       "matches": [
-        "https://*.facebook.com/groups/*",
-        "https://*.fb.com/groups/*"
+        "https://*.facebook.com/*",
+        "https://*.fb.com/*"
       ],
-      "js": ["content.js"],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle"
-    }
-  ],
-  
-  "action": {
-    "default_popup": "popup.html",
-    "default_title": "Facebook Keyword Alert",
-    "default_icon": {
-      "16": "icons/icon16.png",
-      "48": "icons/icon48.png",
-      "128": "icons/icon128.png"
-    }
-  },
-  
-  "options_page": "options.html",
-  
-  "icons": {
-    "16": "icons/icon16.png",
-    "48": "icons/icon48.png", 
-    "128": "icons/icon128.png"
-  },
-  
-  "web_accessible_resources": [
-    {
-      "resources": ["icons/*"],
-      "matches": ["https://*.facebook.com/*", "https://*.fb.com/*"]
     }
   ]
 }
