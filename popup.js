@@ -1,373 +1,316 @@
 // popup.js
 document.addEventListener("DOMContentLoaded", function () {
-    loadSettings();
-    loadScanStatus();
+  loadSettings();
+  loadScanStatus();
 
-    document.getElementById("saveSettings").addEventListener("click", saveSettings);
-    document.getElementById("scanNow").addEventListener("click", scanNow);
-    document.getElementById("testWebhook").addEventListener("click", testWebhook);
-    document.getElementById("openGroups").addEventListener("click", openGroups);
-
-    // Load settings when popup opens
-    loadSettings();
+  document
+    .getElementById("saveSettings")
+    .addEventListener("click", saveSettings);
+  document.getElementById("scanNow").addEventListener("click", scanNow);
+  document
+    .getElementById("testWebhook")
+    .addEventListener("click", testWebhook);
+  document.getElementById("openGroups").addEventListener("click", openGroups);
 });
 
+// ====== SETTINGS LOAD/SAVE ======
 function loadSettings() {
-    chrome.storage.local.get(
-        ["keywords", "webhookUrl", "scanInterval", "autoScroll", "maxScrollAttempts", "facebookGroups", "autoOpenGroups"],
-        function (result) {
-            document.getElementById("keywords").value = result.keywords ? result.keywords.join(", ") : "";
-            document.getElementById("webhookUrl").value = result.webhookUrl || "";
-            document.getElementById("scanInterval").value = result.scanInterval || 5;
-            document.getElementById("autoScroll").checked = result.autoScroll || false;
-            document.getElementById("maxScrollAttempts").value = result.maxScrollAttempts || 3;
-            document.getElementById("facebookGroups").value = result.facebookGroups ? result.facebookGroups.join("\n") : "";
-            document.getElementById("autoOpenGroups").checked = result.autoOpenGroups !== false; // Default to true
-            
-            updateUI();
-        }
-    );
-}
+  chrome.storage.local.get(
+    [
+      "keywords",
+      "webhookUrl",
+      "scanInterval",
+      "autoScroll",
+      "maxScrollAttempts",
+      "facebookGroups",
+      "autoOpenGroups"
+    ],
+    function (result) {
+      const keywords = (result.keywords || []).join(", ");
+      document.getElementById("keywords").value = keywords;
 
-function loadScanStatus() {
-    chrome.runtime.sendMessage({ action: 'getScanStatus' }, function(response) {
-        if (response) {
-            const statusElement = document.getElementById('scanStatus');
-            if (response.autoScanEnabled) {
-                let statusText = `🟢 Auto-scan active (${response.totalIntervals} tabs)`;
-                if (response.isCurrentlyScanning) {
-                    statusText += ' - Scanning now...';
-                }
-                statusElement.innerHTML = statusText;
-                statusElement.className = 'status-active';
-            } else {
-                statusElement.innerHTML = '🟡 Auto-scan disabled';
-                statusElement.className = 'status-inactive';
-            }
-        }
-    });
+      document.getElementById("webhookUrl").value =
+        result.webhookUrl || "";
+
+      document.getElementById("scanInterval").value =
+        result.scanInterval || 5;
+
+      document.getElementById("autoScroll").checked =
+        result.autoScroll || false;
+
+      document.getElementById("maxScrollAttempts").value =
+        result.maxScrollAttempts || 3;
+
+      const facebookGroups = (result.facebookGroups || []).join(", ");
+      document.getElementById("facebookGroups").value = facebookGroups;
+
+      document.getElementById("autoOpenGroups").checked =
+        result.autoOpenGroups || false;
+
+      updateUI();
+    }
+  );
 }
 
 function saveSettings() {
-    const keywords = document
-        .getElementById("keywords")
-        .value.split(",")
-        .map((k) => k.trim())
-        .filter((k) => k.length > 0);
-    const webhookUrl = document.getElementById("webhookUrl").value.trim();
-    const scanInterval = parseInt(document.getElementById("scanInterval").value) || 0;
-    const autoScroll = document.getElementById("autoScroll").checked;
-    const maxScrollAttempts = parseInt(document.getElementById("maxScrollAttempts").value) || 3;
-    const facebookGroups = document.getElementById("facebookGroups").value
-        .split(/[\n,]/)
-        .map(url => url.trim())
-        .filter(url => url.length > 0 && url.includes('facebook.com/groups/'));
-    const autoOpenGroups = document.getElementById("autoOpenGroups").checked;
+  const keywords = document
+    .getElementById("keywords")
+    .value.split(",")
+    .map((k) => k.trim())
+    .filter((k) => k.length > 0);
 
-    if (keywords.length === 0) {
-        showStatus("Please enter at least one keyword", "error");
-        return;
-    }
-
-    if (!webhookUrl) {
-        showStatus("Please enter a webhook URL", "error");
-        return;
-    }
-
-    if (!webhookUrl.includes("https://script.google.com/macros/")) {
-        if (!confirm("This doesn't look like a Google Apps Script URL. Continue anyway?")) {
-            return;
-        }
-    }
-
-    showStatus("Saving settings...", "info");
-
-    chrome.storage.local.set(
-        {
-            keywords: keywords,
-            webhookUrl: webhookUrl,
-            scanInterval: scanInterval,
-            autoScroll: autoScroll,
-            maxScrollAttempts: maxScrollAttempts,
-            facebookGroups: facebookGroups,
-            autoOpenGroups: autoOpenGroups
-        },
-        function () {
-            showStatus("Settings saved successfully!", "success");
-            
-            // Restart auto-scan with new settings
-            chrome.tabs.query({url: "*://*.facebook.com/groups/*"}, function(tabs) {
-                tabs.forEach(tab => {
-                    chrome.runtime.sendMessage({ 
-                        action: 'restartAutoScan', 
-                        tabId: tab.id 
-                    });
-                });
-            });
-            
-            // Reload status after a delay
-            setTimeout(loadScanStatus, 1000);
-            updateUI();
-        }
+  const webhookUrl = document.getElementById("webhookUrl").value.trim();
+  const scanInterval =
+    parseInt(document.getElementById("scanInterval").value) || 0;
+  const autoScroll = document.getElementById("autoScroll").checked;
+  const maxScrollAttempts =
+    parseInt(document.getElementById("maxScrollAttempts").value) || 3;
+  const facebookGroups = document
+    .getElementById("facebookGroups")
+    .value.split(/[\n,]/)
+    .map((url) => url.trim())
+    .filter(
+      (url) =>
+        url.length > 0 && url.includes("facebook.com/groups/")
     );
+  const autoOpenGroups =
+    document.getElementById("autoOpenGroups").checked;
+
+  if (keywords.length === 0) {
+    showStatus("Please enter at least one keyword", "error");
+    return;
+  }
+
+  if (!webhookUrl) {
+    showStatus("Please enter a webhook URL", "error");
+    return;
+  }
+
+  if (!webhookUrl.includes("https://script.google.com/macros/")) {
+    if (
+      !confirm(
+        "This doesn't look like a Google Apps Script URL. Continue anyway?"
+      )
+    ) {
+      return;
+    }
+  }
+
+  showStatus("Saving settings...", "info");
+
+  chrome.storage.local.set(
+    {
+      keywords: keywords,
+      webhookUrl: webhookUrl,
+      scanInterval: scanInterval,
+      autoScroll: autoScroll,
+      maxScrollAttempts: maxScrollAttempts,
+      facebookGroups: facebookGroups,
+      autoOpenGroups: autoOpenGroups
+    },
+    function () {
+      showStatus("Settings saved successfully!", "success");
+
+      // Ask background to refresh its alarm and do an immediate scan on open group tabs
+      chrome.tabs.query(
+        { url: "*://*.facebook.com/groups/*" },
+        function (tabs) {
+          tabs.forEach((tab) => {
+            chrome.runtime.sendMessage(
+              {
+                action: "restartAutoScan",
+                tabId: tab.id
+              },
+              () => {}
+            );
+          });
+        }
+      );
+
+      setTimeout(loadScanStatus, 1000);
+      updateUI();
+    }
+  );
 }
 
-function scanNow() {
-    showStatus("Preparing to scan...", "info");
+// ====== STATUS / UI ======
 
-    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-        if (tabs.length === 0) {
-            showStatus("No active tab found", "error");
-            return;
+function loadScanStatus() {
+  chrome.runtime.sendMessage({ action: "getScanStatus" }, function (response) {
+    if (response) {
+      const statusElement = document.getElementById("scanStatus");
+      if (response.autoScanEnabled) {
+        let count =
+          typeof response.totalIntervals === "number"
+            ? response.totalIntervals
+            : response.activeTabs || 0;
+
+        let statusText = `🟢 Auto-scan active (${count} tab${
+          count === 1 ? "" : "s"
+        })`;
+        if (response.isCurrentlyScanning) {
+          statusText += " - Scanning now...";
         }
-
-        const currentTab = tabs[0];
-        
-        // Check if we're on a Facebook group page
-        if (!currentTab.url || !currentTab.url.includes("facebook.com/groups/")) {
-            showStatus("Please navigate to a Facebook group page first", "error");
-            
-            // Offer to open Facebook groups
-            if (confirm("You need to be on a Facebook group page to scan. Would you like to open Facebook Groups now?")) {
-                chrome.tabs.create({ url: "https://facebook.com/groups" });
-            }
-            return;
-        }
-
-        showStatus("Scanning current page...", "info");
-
-        // Get current keywords
-        const keywords = getKeywords();
-        if (keywords.length === 0) {
-            showStatus("No keywords configured. Please save settings first.", "error");
-            return;
-        }
-
-        // Send scan request
-        chrome.tabs.sendMessage(
-            currentTab.id,
-            { 
-                action: "scan", 
-                keywords: keywords,
-                autoScroll: document.getElementById("autoScroll").checked,
-                maxScrollAttempts: parseInt(document.getElementById("maxScrollAttempts").value) || 3
-            },
-            (response) => {
-                if (chrome.runtime.lastError) {
-                    showStatus("Error: " + chrome.runtime.lastError.message, "error");
-                    return;
-                }
-
-                if (response && response.matches) {
-                    const matchCount = response.matches.length;
-                    if (matchCount > 0) {
-                        showStatus(`🎉 Found ${matchCount} matching posts! Check your Google Sheet.`, "success");
-                        
-                        // Show brief summary
-                        const keywordSummary = {};
-                        response.matches.forEach(match => {
-                            keywordSummary[match.keyword] = (keywordSummary[match.keyword] || 0) + 1;
-                        });
-                        
-                        const summary = Object.entries(keywordSummary)
-                            .map(([keyword, count]) => `${keyword}: ${count}`)
-                            .join(', ');
-                            
-                        setTimeout(() => {
-                            showStatus(`Matches: ${summary}`, "info");
-                        }, 3000);
-                        
-                    } else {
-                        showStatus("No matches found for your keywords", "info");
-                    }
-                } else {
-                    showStatus("Scan completed, but no response received", "error");
-                }
-            }
-        );
-    });
-}
-
-function testWebhook() {
-    const webhookUrl = document.getElementById("webhookUrl").value.trim();
-    if (!webhookUrl) {
-        showStatus("Please enter a webhook URL first", "error");
-        return;
+        statusElement.innerHTML = statusText;
+        statusElement.className = "status-active";
+      } else {
+        statusElement.innerHTML = "🟡 Auto-scan disabled";
+        statusElement.className = "status-inactive";
+      }
     }
-
-    showStatus("Sending test webhook request...", "info");
-
-    chrome.runtime.sendMessage({ action: "testWebhook" }, (response) => {
-        if (response) {
-            if (response.success) {
-                showStatus("✅ Webhook test successful! Check your Google Sheet for the test entry.", "success");
-            } else {
-                showStatus("❌ Webhook test failed: " + (response.error || "Unknown error"), "error");
-                
-                // Provide helpful suggestions based on common errors
-                if (response.error.includes("404") || response.error.includes("Not Found")) {
-                    setTimeout(() => {
-                        showStatus("Tip: Make sure your Google Apps Script is deployed as a web app", "info");
-                    }, 2000);
-                } else if (response.error.includes("403")) {
-                    setTimeout(() => {
-                        showStatus("Tip: Make sure web app is deployed with 'Anyone' access", "info");
-                    }, 2000);
-                }
-            }
-        } else {
-            showStatus("No response received from background script", "error");
-        }
-    });
-}
-
-function openGroups() {
-    const facebookGroups = document.getElementById("facebookGroups").value
-        .split(/[\n,]/)
-        .map(url => url.trim())
-        .filter(url => url.length > 0 && url.includes('facebook.com/groups/'));
-    
-    if (facebookGroups.length === 0) {
-        showStatus("Please add Facebook group URLs first", "error");
-        return;
-    }
-
-    showStatus("Opening Facebook groups...", "info");
-
-    chrome.runtime.sendMessage({ action: "autoOpenGroups" }, (response) => {
-        if (response && response.success) {
-            showStatus("✅ Facebook groups are being opened in background tabs!", "success");
-        } else {
-            showStatus("Failed to open groups", "error");
-        }
-    });
-}
-
-function getKeywords() {
-    const keywordsText = document.getElementById("keywords").value;
-    return keywordsText.split(",").map((k) => k.trim()).filter((k) => k.length > 0);
-}
-
-function showStatus(message, type) {
-    const statusElement = document.getElementById("status");
-    if (!statusElement) {
-        console.log("Status:", message);
-        return;
-    }
-
-    statusElement.textContent = message;
-    statusElement.className = "status " + type;
-
-    // Auto-hide success messages after 5 seconds
-    if (type === "success") {
-        setTimeout(() => {
-            if (statusElement.textContent === message) {
-                statusElement.textContent = "";
-                statusElement.className = "status";
-            }
-        }, 5000);
-    }
-    
-    // Auto-hide info messages after 8 seconds
-    if (type === "info") {
-        setTimeout(() => {
-            if (statusElement.textContent === message) {
-                statusElement.textContent = "";
-                statusElement.className = "status";
-            }
-        }, 8000);
-    }
+  });
 }
 
 function updateUI() {
-    const keywords = getKeywords();
-    const webhookUrl = document.getElementById("webhookUrl").value;
-    const facebookGroups = document.getElementById("facebookGroups").value
-        .split(/[\n,]/)
-        .map(url => url.trim())
-        .filter(url => url.length > 0 && url.includes('facebook.com/groups/'));
-    
-    const scanNowButton = document.getElementById("scanNow");
-    const testWebhookButton = document.getElementById("testWebhook");
-    const openGroupsButton = document.getElementById("openGroups");
-    
-    // Enable/disable buttons based on configuration
-    const hasKeywords = keywords.length > 0;
-    const hasWebhook = webhookUrl.length > 0;
-    const hasGroups = facebookGroups.length > 0;
-    
-    scanNowButton.disabled = !hasKeywords || !hasWebhook;
-    testWebhookButton.disabled = !hasWebhook;
-    openGroupsButton.disabled = !hasGroups;
-    
-    // Update button titles with helpful hints
-    if (!hasKeywords) {
-        scanNowButton.title = "Please configure keywords first";
-    } else if (!hasWebhook) {
-        scanNowButton.title = "Please configure webhook URL first";
-    } else {
-        scanNowButton.title = "Scan current Facebook group page";
-    }
-    
-    testWebhookButton.title = hasWebhook ? "Test connection to Google Sheets" : "Please configure webhook URL first";
-    openGroupsButton.title = hasGroups ? "Open all configured Facebook groups" : "Please add Facebook group URLs first";
-    
-    // Update placeholders with examples
-    const keywordsInput = document.getElementById("keywords");
-    const webhookInput = document.getElementById("webhookUrl");
-    const groupsInput = document.getElementById("facebookGroups");
-    
-    if (!keywordsInput.getAttribute('data-placeholder-set')) {
-        keywordsInput.placeholder = "real estate, mortgage, housing market, for sale...";
-        webhookInput.placeholder = "https://script.google.com/macros/s/.../exec";
-        groupsInput.placeholder = "https://facebook.com/groups/group1, https://facebook.com/groups/group2...";
-        keywordsInput.setAttribute('data-placeholder-set', 'true');
-    }
+  // Hook for any future dynamic UI changes based on settings
 }
 
-// Add real-time validation
-document.getElementById("keywords").addEventListener("input", updateUI);
-document.getElementById("webhookUrl").addEventListener("input", updateUI);
-document.getElementById("facebookGroups").addEventListener("input", updateUI);
-document.getElementById("autoScroll").addEventListener("change", updateUI);
-document.getElementById("maxScrollAttempts").addEventListener("input", updateUI);
-document.getElementById("scanInterval").addEventListener("input", updateUI);
-document.getElementById("autoOpenGroups").addEventListener("change", updateUI);
+function showStatus(message, type) {
+  const status = document.getElementById("status");
+  status.textContent = message;
+  status.className = "status " + type;
 
-// Add keyboard shortcuts
-document.addEventListener("keydown", function (event) {
-    // Ctrl+Enter or Cmd+Enter to save settings
-    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
-        event.preventDefault();
-        saveSettings();
-    }
-    
-    // Ctrl+Shift+S to scan now
-    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === "S") {
-        event.preventDefault();
-        scanNow();
-    }
-    
-    // Ctrl+Shift+O to open groups
-    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === "O") {
-        event.preventDefault();
-        openGroups();
-    }
-});
-
-// Update UI every 2 seconds to show current status
-setInterval(loadScanStatus, 2000);
-
-// Initial UI update
-setTimeout(updateUI, 100);
-
-// Export functions for testing (if needed)
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        getKeywords,
-        showStatus,
-        updateUI
-    };
+  setTimeout(() => {
+    status.className = "status";
+  }, 4000);
 }
 
-console.log("Facebook Keyword Alert popup loaded successfully");
+function getKeywords() {
+  const keywordsText = document.getElementById("keywords").value;
+  return keywordsText
+    .split(",")
+    .map((k) => k.trim())
+    .filter((k) => k.length > 0);
+}
+
+// ====== COMMANDS ======
+
+function scanNow() {
+  showStatus("Preparing to scan...", "info");
+
+  chrome.tabs.query(
+    { active: true, currentWindow: true },
+    function (tabs) {
+      if (tabs.length === 0) {
+        showStatus("No active tab found", "error");
+        return;
+      }
+
+      const currentTab = tabs[0];
+
+      if (
+        !currentTab.url ||
+        !currentTab.url.includes("facebook.com/groups/")
+      ) {
+        showStatus(
+          "Please navigate to a Facebook group page first",
+          "error"
+        );
+
+        if (
+          confirm(
+            "You need to be on a Facebook group page to scan. Would you like to open Facebook Groups now?"
+          )
+        ) {
+          chrome.tabs.create({ url: "https://facebook.com/groups" });
+        }
+        return;
+      }
+
+      showStatus("Scanning current page...", "info");
+
+      const keywords = getKeywords();
+
+      chrome.tabs.sendMessage(
+        currentTab.id,
+        {
+          action: "scan",
+          keywords: keywords,
+          autoScroll:
+            document.getElementById("autoScroll").checked,
+          maxScrollAttempts:
+            parseInt(
+              document.getElementById("maxScrollAttempts").value
+            ) || 3
+        },
+        (response) => {
+          if (chrome.runtime.lastError) {
+            showStatus(
+              "Error: " +
+                chrome.runtime.lastError.message +
+                ". Try refreshing the page.",
+              "error"
+            );
+            return;
+          }
+
+          if (response && response.matches) {
+            if (response.matches.length > 0) {
+              showStatus(
+                `Found ${response.matches.length} matches on this page`,
+                "success"
+              );
+            } else {
+              showStatus("No matches found on this page", "info");
+            }
+          } else {
+            showStatus("No response from content script", "error");
+          }
+        }
+      );
+    }
+  );
+}
+
+function testWebhook() {
+  const webhookUrl = document.getElementById("webhookUrl").value.trim();
+  if (!webhookUrl) {
+    showStatus("Please enter a webhook URL first", "error");
+    return;
+  }
+
+  showStatus("Sending test webhook request...", "info");
+
+  chrome.runtime.sendMessage(
+    { action: "testWebhook" },
+    (response) => {
+      if (response) {
+        if (response.success) {
+          showStatus(
+            "✅ Webhook test successful! Check your Google Sheet for the test entry.",
+            "success"
+          );
+        } else {
+          showStatus(
+            "❌ Webhook test failed: " +
+              (response.error || "Unknown error"),
+            "error"
+          );
+        }
+      } else {
+        showStatus(
+          "❌ No response from background script",
+          "error"
+        );
+      }
+    }
+  );
+}
+
+function openGroups() {
+  showStatus("Opening Facebook groups...", "info");
+
+  chrome.runtime.sendMessage(
+    { action: "autoOpenGroups" },
+    (response) => {
+      if (response && response.success) {
+        showStatus(
+          "✅ Facebook groups are being opened in background tabs!",
+          "success"
+        );
+      } else {
+        showStatus("Failed to open groups", "error");
+      }
+    }
+  );
+}
