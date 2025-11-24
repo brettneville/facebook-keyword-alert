@@ -1,12 +1,11 @@
-// options.js - options page script with group management wired to background
+// options.js - options page with group/tab tools + verbose logging toggle
+
 document.addEventListener("DOMContentLoaded", async () => {
-  console.log("Options page loaded");
+  console.log("[FB Keyword Alert Options] Page loaded");
   await loadSettings();
   await updateTabCount();
 
-  document
-    .getElementById("save")
-    .addEventListener("click", saveSettings);
+  document.getElementById("save").addEventListener("click", saveSettings);
   document
     .getElementById("openGroups")
     .addEventListener("click", openAllGroups);
@@ -17,14 +16,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     .getElementById("refreshGroups")
     .addEventListener("click", refreshGroups);
 
-  // Update tab count every 5 seconds
   setInterval(updateTabCount, 5000);
 });
 
 async function loadSettings() {
   try {
     const settings = await getSettings();
-    console.log("Loaded settings:", settings);
+    console.log("[FB Keyword Alert Options] Loaded settings:", settings);
 
     document.getElementById("keywords").value =
       (settings.keywords || []).join("\n");
@@ -34,10 +32,15 @@ async function loadSettings() {
       settings.googleSheetsUrl || "";
     document.getElementById("notificationsEnabled").checked =
       settings.notificationsEnabled !== false;
+
+    const debugCheckbox = document.getElementById("debugLogging");
+    if (debugCheckbox) {
+      debugCheckbox.checked = settings.debugLogging === true;
+    }
   } catch (error) {
-    console.error("Error loading settings:", error);
+    console.error("[FB Keyword Alert Options] Error loading settings:", error);
     showStatus(
-      "❌ Error loading settings: " + error.message,
+      "❌ Error loading settings: " + (error.message || String(error)),
       "error"
     );
   }
@@ -57,16 +60,19 @@ async function saveSettings() {
       .map((g) => g.trim())
       .filter((g) => g.length > 0);
 
+    const debugCheckbox = document.getElementById("debugLogging");
+
     const settings = {
       keywords: keywords,
       groups: groups,
       googleSheetsUrl:
         document.getElementById("googleSheetsUrl").value.trim(),
       notificationsEnabled:
-        document.getElementById("notificationsEnabled").checked
+        document.getElementById("notificationsEnabled").checked,
+      debugLogging: debugCheckbox ? debugCheckbox.checked : false
     };
 
-    console.log("Saving settings:", settings);
+    console.log("[FB Keyword Alert Options] Saving settings:", settings);
 
     const response = await new Promise((resolve, reject) => {
       chrome.runtime.sendMessage(
@@ -87,9 +93,9 @@ async function saveSettings() {
       showStatus("❌ Failed to save settings", "error");
     }
   } catch (error) {
-    console.error("Save error:", error);
+    console.error("[FB Keyword Alert Options] Save error:", error);
     showStatus(
-      "❌ Error saving settings: " + error.message,
+      "❌ Error saving settings: " + (error.message || String(error)),
       "error"
     );
   }
@@ -135,9 +141,9 @@ async function openAllGroups() {
       showStatus("❌ Failed to open groups", "error");
     }
   } catch (error) {
-    console.error("Error opening groups:", error);
+    console.error("[FB Keyword Alert Options] Error opening groups:", error);
     showStatus(
-      "❌ Error opening groups: " + error.message,
+      "❌ Error opening groups: " + (error.message || String(error)),
       "error"
     );
   }
@@ -161,9 +167,9 @@ async function closeGroupTabs() {
     showStatus("✅ Group tabs closed", "success");
     updateTabCount();
   } catch (error) {
-    console.error("Error closing groups:", error);
+    console.error("[FB Keyword Alert Options] Error closing groups:", error);
     showStatus(
-      "❌ Error closing groups: " + error.message,
+      "❌ Error closing groups: " + (error.message || String(error)),
       "error"
     );
   }
@@ -186,9 +192,9 @@ async function refreshGroups() {
     });
     showStatus("✅ Group tabs refreshed", "success");
   } catch (error) {
-    console.error("Error refreshing groups:", error);
+    console.error("[FB Keyword Alert Options] Error refreshing groups:", error);
     showStatus(
-      "❌ Error refreshing groups: " + error.message,
+      "❌ Error refreshing groups: " + (error.message || String(error)),
       "error"
     );
   }
@@ -222,7 +228,7 @@ async function updateTabCount() {
       }
     }
   } catch (error) {
-    console.error("Error getting tab count:", error);
+    console.error("[FB Keyword Alert Options] Error getting tab count:", error);
   }
 }
 
