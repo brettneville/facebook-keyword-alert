@@ -1,40 +1,242 @@
-<!doctype html>
+
+<!DOCTYPE html>
 <html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Facebook Keyword Alert</title>
+<head>
+    <meta charset="utf-8">
     <style>
-      body { font-family: system-ui, Arial, sans-serif; margin: 12px; width: 320px; }
-      label { display:block; font-size:12px; color:#555; margin-top:10px; }
-      input, textarea { width:100%; box-sizing:border-box; padding:8px; }
-      textarea { min-height:80px; }
-      .row { display:flex; gap:8px; align-items:center; }
-      .row > * { flex:1; }
-      .status { margin-top:8px; font-size:12px; }
-      .btn { margin-top:12px; padding:8px 10px; cursor:pointer; }
+        body {
+            width: 400px;
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f6f8;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            font-size: 18px;
+            margin: 0 0 20px 0;
+            color: #1877F2;
+            text-align: center;
+        }
+        
+        .setting-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #1c1e21;
+        }
+        
+        input[type="text"], input[type="number"], textarea {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e4e6eb;
+            border-radius: 8px;
+            font-size: 14px;
+            box-sizing: border-box;
+            transition: border-color 0.2s;
+        }
+        
+        input[type="text"]:focus, input[type="number"]:focus, textarea:focus {
+            outline: none;
+            border-color: #1877F2;
+        }
+        
+        textarea {
+            height: 80px;
+            resize: vertical;
+        }
+        
+        .description {
+            font-size: 12px;
+            color: #65676b;
+            margin-top: 5px;
+            font-style: italic;
+        }
+        
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .checkbox-group input[type="checkbox"] {
+            margin: 0;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        button {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        #saveSettings {
+            background: #1877F2;
+            color: white;
+        }
+        
+        #saveSettings:hover {
+            background: #166fe5;
+        }
+        
+        #scanNow {
+            background: #42b883;
+            color: white;
+        }
+        
+        #scanNow:hover {
+            background: #3aa876;
+        }
+        
+        #testWebhook {
+            background: #f0f2f5;
+            color: #1c1e21;
+        }
+        
+        #testWebhook:hover {
+            background: #e4e6eb;
+        }
+        
+        #openGroups {
+            background: #8a2be2;
+            color: white;
+        }
+        
+        #openGroups:hover {
+            background: #7b1fa2;
+        }
+        
+        .status {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 13px;
+            text-align: center;
+            display: none;
+        }
+        
+        .status.success {
+            background: #e7f3e8;
+            color: #2e7d32;
+            display: block;
+        }
+        
+        .status.error {
+            background: #fde7e9;
+            color: #c62828;
+            display: block;
+        }
+        
+        .status.info {
+            background: #e3f2fd;
+            color: #1565c0;
+            display: block;
+        }
+        
+        .status-active {
+            color: #42b883;
+            font-weight: 600;
+        }
+        
+        .status-inactive {
+            color: #65676b;
+        }
+        
+        .scan-status {
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #f0f2f5;
+            border-radius: 6px;
+            font-size: 13px;
+        }
     </style>
-  </head>
-  <body>
-    <h3>Facebook Keyword Alert</h3>
-
-    <label for="keywords">Keywords (comma or newline separated)</label>
-    <textarea id="keywords" placeholder="e.g., wilmington, housing, 3br"></textarea>
-
-    <label for="webhookUrl">Webhook URL (Apps Script Web App)</label>
-    <input id="webhookUrl" type="url" placeholder="https://script.google.com/.../exec" />
-
-    <label for="webhookToken">Webhook Token (required)</label>
-    <input id="webhookToken" type="password" placeholder="Paste the same token set in Script Properties" />
-
-    <div class="row">
-      <label><input type="checkbox" id="notificationsEnabled" checked /> Enable desktop notifications</label>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Facebook Keyword Alert</h1>
+        
+        <div class="scan-status">
+            <div id="scanStatus">🟡 Loading status...</div>
+        </div>
+        
+        <div class="setting-group">
+            <label for="keywords">Keywords to monitor:</label>
+            <textarea id="keywords" placeholder="real estate, mortgage, housing market..."></textarea>
+            <div class="description">Comma-separated list of keywords to search for</div>
+        </div>
+        
+        <div class="setting-group">
+            <label for="facebookGroups">Facebook Groups to Monitor:</label>
+            <textarea id="facebookGroups" placeholder="https://facebook.com/groups/group1, https://facebook.com/groups/group2..."></textarea>
+            <div class="description">Paste Facebook group URLs (one per line or comma-separated). Leave empty to scan all groups you visit.</div>
+        </div>
+        
+        <div class="setting-group">
+            <div class="checkbox-group">
+                <input type="checkbox" id="autoOpenGroups">
+                <label for="autoOpenGroups">Auto-open groups on browser start</label>
+            </div>
+            <div class="description">Automatically open all configured Facebook groups when browser starts</div>
+        </div>
+        
+        <div class="setting-group">
+            <label for="webhookUrl">Google Apps Script Webhook URL:</label>
+            <input type="text" id="webhookUrl" placeholder="https://script.google.com/macros/s/.../exec">
+            <div class="description">Paste your Google Apps Script webhook URL here</div>
+        </div>
+        
+        <div class="setting-group">
+            <label for="scanInterval">Auto-Scan Interval (minutes):</label>
+            <input type="number" id="scanInterval" min="0" max="60" value="5">
+            <div class="description">0 = disable auto-scan. How often to automatically scan open Facebook groups</div>
+        </div>
+        
+        <div class="setting-group">
+            <div class="checkbox-group">
+                <input type="checkbox" id="autoScroll">
+                <label for="autoScroll">Enable Auto-Scroll</label>
+            </div>
+            <div class="description">Automatically scrolls to load more posts during scanning</div>
+        </div>
+        
+        <div class="setting-group">
+            <label for="maxScrollAttempts">Max Scroll Attempts:</label>
+            <input type="number" id="maxScrollAttempts" min="1" max="10" value="3">
+            <div class="description">How many times to scroll for more content when auto-scroll is enabled</div>
+        </div>
+        
+        <div class="button-group">
+            <button id="saveSettings">💾 Save Settings</button>
+            <button id="scanNow">🔍 Scan Now</button>
+        </div>
+        
+        <div class="button-group">
+            <button id="testWebhook">🧪 Test Webhook</button>
+            <button id="openGroups">🚀 Open Groups</button>
+        </div>
+        
+        <div id="status" class="status"></div>
     </div>
-
-    <button id="saveBtn" class="btn">Save</button>
-    <button id="scanNowBtn" class="btn">Scan now</button>
-    <div id="status" class="status"></div>
-
+    
     <script src="popup.js"></script>
-  </body>
+</body>
 </html>
