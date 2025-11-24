@@ -10,10 +10,14 @@ document.addEventListener("DOMContentLoaded", function () {
   document
     .getElementById("testWebhook")
     .addEventListener("click", testWebhook);
-  document.getElementById("openGroups").addEventListener("click", openGroups);
+  document
+    .getElementById("openGroups")
+    .addEventListener("click", openGroups);
+
+  // Load settings when popup opens
+  loadSettings();
 });
 
-// ====== SETTINGS LOAD/SAVE ======
 function loadSettings() {
   chrome.storage.local.get(
     [
@@ -111,7 +115,7 @@ function saveSettings() {
     function () {
       showStatus("Settings saved successfully!", "success");
 
-      // Ask background to refresh its alarm and do an immediate scan on open group tabs
+      // ask background to refresh alarm + scan tabs
       chrome.tabs.query(
         { url: "*://*.facebook.com/groups/*" },
         function (tabs) {
@@ -132,8 +136,6 @@ function saveSettings() {
     }
   );
 }
-
-// ====== STATUS / UI ======
 
 function loadScanStatus() {
   chrome.runtime.sendMessage({ action: "getScanStatus" }, function (response) {
@@ -162,7 +164,7 @@ function loadScanStatus() {
 }
 
 function updateUI() {
-  // Hook for any future dynamic UI changes based on settings
+  // hook available if we ever want to enable/disable controls dynamically
 }
 
 function showStatus(message, type) {
@@ -182,8 +184,6 @@ function getKeywords() {
     .map((k) => k.trim())
     .filter((k) => k.length > 0);
 }
-
-// ====== COMMANDS ======
 
 function scanNow() {
   showStatus("Preparing to scan...", "info");
@@ -314,3 +314,17 @@ function openGroups() {
     }
   );
 }
+
+// Initial UI update
+setTimeout(updateUI, 100);
+
+// Export functions for testing (optional)
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = {
+    getKeywords,
+    showStatus,
+    updateUI
+  };
+}
+
+console.log("Facebook Keyword Alert popup loaded successfully");
